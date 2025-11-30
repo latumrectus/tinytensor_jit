@@ -1,50 +1,75 @@
-//
-// Created by ishaan on 11/29/25.
-//
 #include <tt/jit/Compiler.h>
 #include <tt/jit/OpNode.h>
 #include <tt/jit/Ops.h>
-#include <tt/jit/Visitor.h>
 #include <tt/tensor.h>
 #include <iostream>
-#include <variant>
+
+// add actual mlir stuff here
 
 namespace tinytensor::jit {
 
-// Inherits from BaseVisitor
-struct CompilerVisitor : BaseVisitor<CompilerVisitor> {
+// This hides the actual MLIR objects from the header
+struct JITCompiler::Impl {
+    // In the future:
+    // mlir::MLIRContext context;
+    // mlir::ModuleOp module;
+    // std::unique_ptr<mlir::OpBuilder> builder;
 
-    using BaseVisitor::operator();
-
-    void operator()(const InputOp& op) {
-        std::cout << "  [Compiler] Found Input (ID: " << op.id << ")" << std::endl;
-    }
-
-    void operator()(const ReluOp& op) {
-        std::cout << "  [Compiler] Compiling ReLU" << std::endl;
-    }
-
-    void operator()(const AddOp& op) {
-        std::cout << "  [Compiler] Compiling Add" << std::endl;
-    }
-
-    void operator()(const BroadcastOp& op) {
-        std::cout << "  [Compiler] Compiling Broadcast -> " << op.target_shape << std::endl;
-    }
-
-    void operator()(const ReshapeOp& op) {
-        std::cout << "  [Compiler] Compiling Reshape -> " << op.target_shape << std::endl;
-    }
+    // For now, placeholders:
+    int mock_context = 0;
 };
 
 
-Tensor JITCompiler::compile(std::shared_ptr<OpNode> final_node) {
-    std::cout << "--- JIT COMPILATION START ---" << std::endl;
+CompilerVisitor::CompilerVisitor(mlir::OpBuilder* builder,
+                                 mlir::ModuleOp* module,
+                                 mlir::MLIRContext* context)
+    : builder_(builder), module_(module), context_(context) {
+    // In the future:
+    // builder_->setInsertionPointToStart(module_->getBody());
+}
 
+void CompilerVisitor::operator()(const InputOp& op) {
+
+    std::cout << "  [Compiler] InputOp (ID: " << op.id << ") -> generating IR..." << std::endl;
+}
+
+void CompilerVisitor::operator()(const ReluOp& op) {
+    std::cout << "  [Compiler] ReluOp -> generating IR..." << std::endl;
+}
+
+void CompilerVisitor::operator()(const AddOp& op) {
+    std::cout << "  [Compiler] AddOp -> generating IR..." << std::endl;
+}
+
+void CompilerVisitor::operator()(const BroadcastOp& op) {
+    std::cout << "  [Compiler] BroadcastOp -> generating IR..." << std::endl;
+}
+
+void CompilerVisitor::operator()(const ReshapeOp& op) {
+    std::cout << "  [Compiler] ReshapeOp -> generating IR..." << std::endl;
+}
+
+
+
+JITCompiler::JITCompiler() : impl_(std::make_unique<Impl>()) {}
+JITCompiler::~JITCompiler() = default;
+
+Tensor JITCompiler::compile(std::shared_ptr<OpNode> final_node) {
+    std::cout << "--- JIT COMPILATION START (Gazprea Structure) ---" << std::endl;
     visited_nodes_.clear();
 
+    // Initialize MLIR State
+    // future...
+    // mlir::OpBuilder builder(&impl_->context);
+    // mlir::ModuleOp module = mlir::ModuleOp::create(...)
+
+    // We pass nullptr because haven't linked MLIR yet,
+    // but the visitor structure is ready to receive them.
+    CompilerVisitor visitor(nullptr, nullptr, nullptr);
+
+    // run Traversal
     if (final_node) {
-        visit(final_node);
+        visit_recursive(final_node, visitor);
     }
 
     std::cout << "--- JIT COMPILATION DONE ---" << std::endl;
@@ -52,23 +77,17 @@ Tensor JITCompiler::compile(std::shared_ptr<OpNode> final_node) {
     return full(0.0f, {1}, kCPU);
 }
 
-void JITCompiler::visit(const std::shared_ptr<OpNode>& node) {
+void JITCompiler::visit_recursive(const std::shared_ptr<OpNode>& node, CompilerVisitor& visitor) {
     auto key = reinterpret_cast<uintptr_t>(node.get());
-    if (visited_nodes_.count(key)) {
-        return;
-    }
+    if (visited_nodes_.count(key)) return;
 
-    // Post-order traversal, visit inputs first
+    // Post-order traversal
     for (const auto& input : node->inputs()) {
-        if (input) {
-            visit(input);
-        }
+        if (input) visit_recursive(input, visitor);
     }
 
-    // Process current node
-    CompilerVisitor visitor;
+    // visit current
     visitor.dispatch(node->op());
-
     visited_nodes_[key] = true;
 }
 
