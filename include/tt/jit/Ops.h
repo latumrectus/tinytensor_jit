@@ -2,24 +2,20 @@
 // Created by ishaan on 11/27/25.
 //
 
-
 #pragma once
 #include <variant>
 #include <vector>
 #include <cstdint>
+#include <tt/shape.h>
 
 namespace tinytensor::jit {
 
-// leaf nodes
-// Represents raw data coming into the graph (e.g. from CPU)
+// Leaf node
 struct InputOp {
-    // ee might store a unique id or metadata here later
     int id;
 };
 
-// define various ops with different configs
-// Relu, Add etc... dont need any more information than what already exists, there may be ops, such as reduceSum
-// which will need extra info, their structs will therefore look different
+// Operations
 struct ReluOp {};
 struct AddOp {};
 
@@ -27,11 +23,17 @@ struct BroadcastOp {
     Shape target_shape;
 };
 
+struct ReshapeOp {
+    Shape target_shape;
+};
+
+// The Variant
 using OpType = std::variant<
     InputOp,
     ReluOp,
     AddOp,
-    BroadcastOp
+    BroadcastOp,
+    ReshapeOp
 >;
 
 } // namespace tinytensor::jit
