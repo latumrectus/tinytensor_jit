@@ -4,33 +4,54 @@
 #include <tt/tensor.h>
 #include <iostream>
 
-// add actual mlir stuff here
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Verifier.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"
 
 namespace tinytensor::jit {
 
 // This hides the actual MLIR objects from the header
 struct JITCompiler::Impl {
-    // In the future:
-    // mlir::MLIRContext context;
-    // mlir::ModuleOp module;
-    // std::unique_ptr<mlir::OpBuilder> builder;
+    mlir::MLIRContext context;
+    mlir::ModuleOp module;
+    std::unique_ptr<mlir::OpBuilder> builder;
 
-    // For now, placeholders:
-    int mock_context = 0;
+    Impl() {
+        context.getOrLoadDialect<mlir::func::FuncDialect>();
+        context.getOrLoadDialect<mlir::tosa::TosaDialect>();
+    }
 };
 
+JITCompiler::JITCompiler() : impl_(std::make_unique<Impl>()) {}
+JITCompiler::~JITCompiler() = default;
+JITCompiler::JITCompiler(JITCompiler&&) noexcept = default;
+JITCompiler& JITCompiler::operator=(JITCompiler&&) noexcept = default;
+CompilerVisitor::CompilerVisitor(mlir::OpBuilder& b, mlir::ModuleOp& m, mlir::MLIRContext& c)
+    : builder_(b), module_(m), context_(c) {}
 
-CompilerVisitor::CompilerVisitor(mlir::OpBuilder* builder,
-                                 mlir::ModuleOp* module,
-                                 mlir::MLIRContext* context)
-    : builder_(builder), module_(module), context_(context) {
-    // In the future:
-    // builder_->setInsertionPointToStart(module_->getBody());
+mlir::Value CompilerVisitor::get_mlir_value(const std::shared_ptr<OpNode>& node) const {
+    if (!node_value_map.contains(node)) {
+        TT_ERROR("Compiler Error: Node dependency not found in SSA map.");
+    }
+    return node_value_map.at(node);
+}
+
+void CompilerVisitor::set_mlir_value(const OpType&, mlir::Value val) {
+    if (!current_node_) TT_ERROR("Compiler Error: Current node state is null");
+    node_value_map[current_node_] = val;
 }
 
 void CompilerVisitor::operator()(const InputOp& op) {
+    auto func = llvm::dyn_cast<mlir::func::FuncOp>(module_.getBody()->front());
+    if (op.id >= func.getNumArguments()) {
+        TT_ERROR("Compiler Error: InputOp ID exceeds generated function arguments.");
+    }
 
-    std::cout << "  [Compiler] InputOp (ID: " << op.id << ") -> generating IR..." << std::endl;
+    mlir::Value const arg = func.getArgument(op.id);
+    set_mlir_value(InputOp{}, arg);
 }
 
 void CompilerVisitor::operator()(const ReluOp& op) {
@@ -48,11 +69,6 @@ void CompilerVisitor::operator()(const BroadcastOp& op) {
 void CompilerVisitor::operator()(const ReshapeOp& op) {
     std::cout << "  [Compiler] ReshapeOp -> generating IR..." << std::endl;
 }
-
-
-
-JITCompiler::JITCompiler() : impl_(std::make_unique<Impl>()) {}
-JITCompiler::~JITCompiler() = default;
 
 Tensor JITCompiler::compile(std::shared_ptr<OpNode> final_node) {
     std::cout << "--- JIT COMPILATION START (Gazprea Structure) ---" << std::endl;

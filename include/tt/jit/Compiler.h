@@ -1,7 +1,6 @@
 #pragma once
 #include <memory>
 #include <unordered_map>
-#include <string>
 #include <tt/tensor.h>
 #include <tt/jit/OpNode.h>
 #include <tt/jit/Visitor.h>
@@ -16,20 +15,15 @@ namespace mlir {
 
 namespace tinytensor::jit {
 
-/**
- * @class CompilerVisitor
- * @brief The heavy lifter. Translates OpNodes into MLIR/LLVM IR.
- * Structure mimics Gazprea's BackendVisitor.
- */
+class OpNode;
+
 class CompilerVisitor : public BaseVisitor<CompilerVisitor> {
 public:
     using BaseVisitor::operator();
 
-    // Constructor accepts the Compiler State
-    // (We use raw pointers for now to avoid unique_ptr issues with incomplete types)
-    CompilerVisitor(mlir::OpBuilder* builder,
-                   mlir::ModuleOp* module,
-                   mlir::MLIRContext* context);
+    CompilerVisitor(mlir::OpBuilder& builder,
+                    mlir::ModuleOp& module,
+                    mlir::MLIRContext& context);
 
     // Visitor Methods
     void operator()(const InputOp& op);
@@ -38,26 +32,31 @@ public:
     void operator()(const BroadcastOp& op);
     void operator()(const ReshapeOp& op);
 
-    // mlir::Value resolveValue(OpNode* node);
+    mlir::Value get_mlir_value(const std::shared_ptr<OpNode>& node) const;
+    void set_mlir_value(const OpType& op_variant, mlir::Value val);
+    void set_current_node(const std::shared_ptr<OpNode>& node) { current_node_ = node; }
 
 private:
-    mlir::OpBuilder* builder_;
-    mlir::ModuleOp* module_;
-    mlir::MLIRContext* context_;
+    mlir::OpBuilder& builder_;
+    mlir::ModuleOp& module_;
+    mlir::MLIRContext& context_;
 
-    // Tracks the current compilation node to map OpNode -> mlir::Value
-    // std::unordered_map<OpNode*, mlir::Value> value_map_;
+    std::unordered_map<std::shared_ptr<OpNode>, mlir::Value> node_value_map;
+
+    std::shared_ptr<OpNode> current_node_;
+
+    friend class JITCompiler;
 };
 
-
-/**
- * @class JITCompiler
- * @brief The Driver. Manages the lifetime of MLIR Contexts and triggers the Visitor.
- */
 class JITCompiler {
 public:
     JITCompiler();
     ~JITCompiler();
+    JITCompiler(JITCompiler&&) noexcept;
+    JITCompiler& operator=(JITCompiler&&) noexcept;
+
+    JITCompiler(const JITCompiler&) = delete;
+    JITCompiler& operator=(const JITCompiler&) = delete;
 
     Tensor compile(std::shared_ptr<OpNode> final_node);
 

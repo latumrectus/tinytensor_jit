@@ -1,5 +1,7 @@
 # 1. Collect Headers
-file(GLOB_RECURSE HEADER_LIST CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../include/tt/*.h")
+file(GLOB_RECURSE HEADER_LIST CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/../include/tt/*.h"
+)
 
 # 2. Define the Library Target
 add_library(tinytensor STATIC
@@ -20,32 +22,52 @@ add_library(tinytensor STATIC
 
 add_library(tinytensor::tinytensor ALIAS tinytensor)
 
-# Enforce C++20 on Target
+# 3. Enforce C++20
 target_compile_features(tinytensor PUBLIC cxx_std_20)
 
-# GENERATE EXPORT HEADER !! dont forget
+# 4. Export header
 include(GenerateExportHeader)
 generate_export_header(tinytensor
         EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/include/tt/export.h"
 )
 
-# Include Directories
-target_include_directories(tinytensor PUBLIC
-        # Source includes (your code)
+# 5. Include directories
+target_include_directories(tinytensor
+        PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>"
-        "$<INSTALL_INTERFACE:include>"
-
-        # Generated includes (where export.h lives)
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+        "$<INSTALL_INTERFACE:include>"
+        PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
-target_include_directories(tinytensor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-target_include_directories(tinytensor SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/external/libnop/include")
+target_include_directories(tinytensor
+        SYSTEM PRIVATE
+        "${PROJECT_SOURCE_DIR}/external/libnop/include"
+)
 
+# 6. MLIR / LLVM
+target_link_libraries(tinytensor
+        PRIVATE
+        MLIRIR
+        MLIRSupport
+        MLIRFuncDialect
+        LLVMCore
+        LLVMSupport
+)
+
+target_include_directories(tinytensor
+        SYSTEM PRIVATE
+        ${MLIR_INCLUDE_DIRS}
+        ${LLVM_INCLUDE_DIRS}
+)
+
+# 7. Compile definitions
 target_compile_definitions(tinytensor PUBLIC
         "$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:TINYTENSOR_STATIC_DEFINE>"
 )
 
+# 8. CUDA
 if(TT_BUILD_CUDA)
     find_package(CUDAToolkit)
     if(CUDAToolkit_FOUND)
@@ -61,6 +83,7 @@ if(TT_BUILD_CUDA)
     endif()
 endif()
 
+# 9. Subcomponents
 add_subdirectory(tensor)
 add_subdirectory(common)
 add_subdirectory(autograd)
