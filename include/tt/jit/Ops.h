@@ -12,7 +12,7 @@ namespace tinytensor::jit {
 
 // Leaf node
 struct InputOp {
-    int id;
+    unsigned int id;
     Shape shape;
     ScalarType dtype;
 };

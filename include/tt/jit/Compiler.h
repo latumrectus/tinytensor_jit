@@ -34,16 +34,16 @@ public:
 
     mlir::Value get_mlir_value(const std::shared_ptr<OpNode>& node) const;
     void set_mlir_value(const OpType& op_variant, mlir::Value val);
-    void set_current_node(const std::shared_ptr<OpNode>& node) { current_node_ = node; }
+    void set_current_node(const std::shared_ptr<OpNode>& node) { current_node = node; }
 
 private:
-    mlir::OpBuilder& builder_;
-    mlir::ModuleOp& module_;
-    mlir::MLIRContext& context_;
+    mlir::OpBuilder& builder;
+    mlir::ModuleOp& module;
+    mlir::MLIRContext& context;
 
     std::unordered_map<std::shared_ptr<OpNode>, mlir::Value> node_value_map;
 
-    std::shared_ptr<OpNode> current_node_;
+    std::shared_ptr<OpNode> current_node;
 
     friend class JITCompiler;
 };
@@ -63,12 +63,12 @@ public:
 private:
     void visit_recursive(const std::shared_ptr<OpNode>& node, CompilerVisitor& visitor);
 
-    std::unordered_map<uintptr_t, bool> visited_nodes_;
+    std::unordered_map<uintptr_t, bool> visited_nodes;
 
     // We hold these as opaque pointers or unique_ptrs to implementation classes
     // to keep dependencies out of the header until Step 5.
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::unique_ptr<Impl> impl;
 };
 
 } // namespace tinytensor::jit

@@ -27,6 +27,9 @@
 #include "tensor/backend/common/unary.h"
 #include "tensor/backend_register.h"
 
+#include <tt/jit/Compiler.h>
+#include "tensor/backend/jit/storage_jit.h"
+
 #include <nop/serializer.h>
 #include <nop/utility/buffer_reader.h>
 #include <nop/utility/buffer_writer.h>
@@ -3245,6 +3248,24 @@ auto make_dot(const Tensor &tensor) -> std::string {
     ss << std::format("{:d} -> \"{:s}\"; ", node_ids.at(ptr_back), tensor.shape());
     ss << "}";
     return ss.str();
+}
+
+auto Tensor::eval() -> Tensor {
+    if (device_ != kJIT) {
+        return *this;
+    }
+
+    CHECK_VALID_TENSOR(*this);
+
+    // Unwrap the Graph Node from Storage
+    // use the helper defined in storage_jit.h
+    auto& jit_storage = get_storage<StorageJIT>();
+    auto root_node = jit_storage.get_node();
+
+    // Invoke the Compiler
+    // (might cache this compiler instance or the result later idk just testing rn)
+    jit::JITCompiler compiler;
+    return compiler.compile(root_node);
 }
 
 }    // namespace tinytensor

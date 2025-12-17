@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # 3. Build Options
 option(TT_BUILD_CUDA "Build tinytensor with cuda backend support" OFF)
 option(TT_BUILD_TESTS "Build tinytensor tests" OFF)
-option(TT_BUILD_EXAMPLES "Build tinytensor examples" OFF)
+option(TT_BUILD_EXAMPLES "Build tinytensor examples" ON)
 
 # 4. Find LLVM / MLIR
 find_package(LLVM REQUIRED CONFIG)

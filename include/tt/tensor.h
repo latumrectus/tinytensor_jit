@@ -1551,6 +1551,7 @@ public:
      * @return the clamped tensor
      */
     auto clamp(const Tensor &min, const Tensor &max) const -> Tensor;
+    auto eval() -> Tensor;
 
 private:
     // Friends

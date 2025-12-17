@@ -4,9 +4,9 @@
 
 namespace tinytensor {
 
-class BackendJIT : public BackendBase {
+class JITGraphBuilder : public BackendBase {
 public:
-    BackendJIT() = default;
+    JITGraphBuilder() = default;
 
     [[nodiscard]] auto relu(const Tensor &tensor) const -> Tensor override;
     [[nodiscard]] auto add(const Tensor &lhs, const Tensor &rhs) const -> Tensor override;
@@ -41,7 +41,7 @@ public:
     STUB_RET(StoragePtr, from_vec, const std::vector<double> &data, int device_id)
     STUB_RET(StoragePtr, from_vec, std::vector<double> &&data, int device_id)
     STUB_RET(StoragePtr, from_scalar, Scalar scalar, int device_id)
-    STUB_RET(StoragePtr, full, const Scalar &value, std::size_t N, int device_id)
+    [[nodiscard]] auto full(const Scalar &value, std::size_t N, int device_id) const -> StoragePtr override;
     STUB_RET(StoragePtr, arange, std::size_t N, ScalarType dtype, int device_id)
 
     // Conversions

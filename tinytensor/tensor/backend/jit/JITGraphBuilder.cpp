@@ -1,8 +1,10 @@
-#include "backend_jit.h"
-#include "storage_jit.h"
+#include "JITGraphBuilder.h"
+
 #include <tt/jit/Graph.h>
 #include <tt/jit/Ops.h>
 #include <tt/shape.h>
+
+#include "storage_jit.h"
 
 namespace tinytensor {
 
@@ -16,7 +18,7 @@ Tensor make_jit_tensor(std::shared_ptr<jit::OpNode> node, Shape shape, ScalarTyp
     return Tensor(std::move(storage), dtype, shape, kJIT);
 }
 
-Tensor BackendJIT::relu(const Tensor &tensor) const {
+Tensor JITGraphBuilder::relu(const Tensor &tensor) const {
     auto& in_jit = tensor.get_storage<StorageJIT>();
 
     auto node = jit::GetGlobalGraph().create_node(jit::ReluOp{}, {in_jit.get_node()});
@@ -24,7 +26,7 @@ Tensor BackendJIT::relu(const Tensor &tensor) const {
     return make_jit_tensor(node, tensor.shape(), tensor.dtype());
 }
 
-Tensor BackendJIT::add(const Tensor &lhs, const Tensor &rhs) const {
+Tensor JITGraphBuilder::add(const Tensor &lhs, const Tensor &rhs) const {
     auto& lhs_jit = lhs.get_storage<StorageJIT>();
     auto& rhs_jit = rhs.get_storage<StorageJIT>();
 
@@ -38,6 +40,29 @@ Tensor BackendJIT::add(const Tensor &lhs, const Tensor &rhs) const {
 
     // take the LHS shape/dtype as the truth
     return make_jit_tensor(node, lhs.shape(), lhs.dtype());
+}
+
+auto JITGraphBuilder::full(const Scalar &value, std::size_t N, int device_id) const -> StoragePtr {
+    // 1. Assign a unique ID for this graph input
+    static int global_input_id = 0;
+    unsigned int id = global_input_id++;
+
+    // 2. Determine metadata
+    // Note: BackendBase::full only gives us N (total elements), not the Shape.
+    // We create a 1D shape for the node. The frontend Tensor will handle the view.
+    Shape shape = {(int)N};
+
+    // Assuming float for simple tests, or infer from Scalar if possible
+    ScalarType dtype = kF32;
+
+    // 3. Create the InputOp in the graph
+    auto node = jit::GetGlobalGraph().create_node(
+        jit::InputOp{id, shape, dtype},
+        {}
+    );
+
+    // 4. Return the JIT Storage
+    return std::make_unique<StorageJIT>(std::move(node));
 }
 
 } // namespace tinytensor

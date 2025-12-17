@@ -12,8 +12,8 @@ add_library(tinytensor STATIC
         ../include/tt/jit/OpNode.h
 
         tensor/backend/jit/storage_jit.h
-        tensor/backend/jit/backend_jit.h
-        tensor/backend/jit/backend_jit.cpp
+        tensor/backend/jit/JITGraphBuilder.h
+        tensor/backend/jit/JITGraphBuilder.cpp
 
         ../include/tt/jit/Visitor.h
         ../include/tt/jit/Compiler.h
@@ -52,6 +52,11 @@ target_link_libraries(tinytensor
         MLIRIR
         MLIRSupport
         MLIRFuncDialect
+        MLIRTosaDialect
+        MLIRParser
+        MLIRPass
+        MLIRExecutionEngine
+        MLIRTargetLLVMIRExport
         LLVMCore
         LLVMSupport
 )

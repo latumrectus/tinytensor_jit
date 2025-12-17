@@ -4,7 +4,7 @@
 #include <tt/exception.h>
 
 #include "backend/cpu/backend_cpu.h"
-#include "backend/jit/backend_jit.h"
+#include "backend/jit/JITGraphBuilder.h"
 #include "backend_base.h"
 
 #ifdef TT_CUDA
@@ -23,7 +23,7 @@ BackendBase *get_backend(Device device) {
     }
     case Backend::jit: {
         // use a static singleton, like the CPU backend
-        static const std::unique_ptr<BackendJIT> backend_jit = std::make_unique<BackendJIT>();
+        static const std::unique_ptr<JITGraphBuilder> backend_jit = std::make_unique<JITGraphBuilder>();
         return backend_jit.get();
     }
 
