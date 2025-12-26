@@ -41,27 +41,28 @@ Tensor JITGraphBuilder::add(const Tensor &lhs, const Tensor &rhs) const {
     // take the LHS shape/dtype as the truth
     return make_jit_tensor(node, lhs.shape(), lhs.dtype());
 }
-
-auto JITGraphBuilder::full(const Scalar &value, std::size_t N, int device_id) const -> StoragePtr {
-    // 1. Assign a unique ID for this graph input
+auto JITGraphBuilder::full(const Scalar &value, const Shape &shape, int device_id) const -> StoragePtr {
     static int global_input_id = 0;
-    unsigned int id = global_input_id++;
+    unsigned int const id = global_input_id++;
 
-    // 2. Determine metadata
-    // Note: BackendBase::full only gives us N (total elements), not the Shape.
-    // We create a 1D shape for the node. The frontend Tensor will handle the view.
-    Shape shape = {(int)N};
+    auto node = jit::GetGlobalGraph().create_node(jit::InputOp{.id=id, .shape=shape, .dtype=kF32}, {});
+    return std::make_unique<StorageJIT>(std::move(node));
+}
+auto JITGraphBuilder::full(const Scalar &value, std::size_t N, int device_id) const -> StoragePtr {
+    static int global_input_id = 0;
+    unsigned int const id = global_input_id++;
 
-    // Assuming float for simple tests, or infer from Scalar if possible
-    ScalarType dtype = kF32;
+    // Note: BackendBase::full only gives N, not the Shape
+    // create a 1D shape for the node, frontend Tensor will handle the view
+    Shape const shape = {(int)N};
 
-    // 3. Create the InputOp in the graph
+    constexpr ScalarType dtype = kF32;
+
     auto node = jit::GetGlobalGraph().create_node(
-        jit::InputOp{id, shape, dtype},
+        jit::InputOp{.id=id, .shape=shape, .dtype=dtype},
         {}
     );
 
-    // 4. Return the JIT Storage
     return std::make_unique<StorageJIT>(std::move(node));
 }
 

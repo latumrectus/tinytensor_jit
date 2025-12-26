@@ -49,6 +49,9 @@ public:
     [[nodiscard]] virtual auto from_vec(std::vector<double> &&data, int device_id) const -> StoragePtr = 0;
     [[nodiscard]] virtual auto from_scalar(Scalar scalar, int device_id) const -> StoragePtr = 0;
     [[nodiscard]] virtual auto full(const Scalar &value, std::size_t N, int device_id) const -> StoragePtr = 0;
+    [[nodiscard]] virtual auto full(const Scalar &value, const Shape &shape, int device_id) const -> StoragePtr {
+        return full(value, shape.numel(), device_id);
+    }
     [[nodiscard]] virtual auto arange(std::size_t N, ScalarType dtype, int device_id) const -> StoragePtr = 0;
 
     // Conversion to vec

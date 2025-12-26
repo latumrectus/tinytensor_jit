@@ -1452,8 +1452,7 @@ auto full(Scalar value, Shape shape, Device device, bool requires_grad) -> Tenso
     CHECK_EMPTY_SHAPE(shape);
     CHECK_REQUIRES_GRAD(value.dtype(), requires_grad);
     const auto N = static_cast<std::size_t>(shape.numel());
-    Tensor result{get_backend(device)->full(value, N, device.id), value.dtype(), shape, device};
-    result.set_requires_grad(requires_grad);
+    Tensor result{get_backend(device)->full(value, shape, device.id), value.dtype(), shape, device};    result.set_requires_grad(requires_grad);
     return result;
 }
 

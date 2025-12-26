@@ -10,7 +10,7 @@ public:
 
     [[nodiscard]] auto relu(const Tensor &tensor) const -> Tensor override;
     [[nodiscard]] auto add(const Tensor &lhs, const Tensor &rhs) const -> Tensor override;
-    
+
     [[noreturn]] void not_impl(const char* name) const {
         std::string msg = std::string("JIT Backend: Function not implemented: ") + name;
         TT_ERROR(msg.c_str());
@@ -42,6 +42,7 @@ public:
     STUB_RET(StoragePtr, from_vec, std::vector<double> &&data, int device_id)
     STUB_RET(StoragePtr, from_scalar, Scalar scalar, int device_id)
     [[nodiscard]] auto full(const Scalar &value, std::size_t N, int device_id) const -> StoragePtr override;
+    [[nodiscard]] auto full(const Scalar &value, const Shape &shape, int device_id) const -> StoragePtr override;
     STUB_RET(StoragePtr, arange, std::size_t N, ScalarType dtype, int device_id)
 
     // Conversions

@@ -2,6 +2,7 @@
 #include <tt/jit/OpNode.h>
 #include <tt/jit/Ops.h>
 #include <tt/tensor.h>
+#include <algorithm>
 #include <iostream>
 
 #include "mlir/IR/Builders.h"
@@ -31,6 +32,77 @@ JITCompiler::JITCompiler(JITCompiler&&) noexcept = default;
 JITCompiler& JITCompiler::operator=(JITCompiler&&) noexcept = default;
 CompilerVisitor::CompilerVisitor(mlir::OpBuilder& b, mlir::ModuleOp& m, mlir::MLIRContext& c)
     : builder(b), module(m), context(c) {}
+
+namespace {
+Shape infer_shape(const std::shared_ptr<OpNode>& node) {
+
+    return std::visit([&](const auto& op) -> Shape {
+        using T = std::decay_t<decltype(op)>;
+        if constexpr (std::is_same_v<T, InputOp>) {
+            return op.shape;
+        }
+        else if constexpr (std::is_same_v<T, BroadcastOp>) {
+            return op.target_shape;
+        }
+        else if constexpr (std::is_same_v<T, ReshapeOp>) {
+            return op.target_shape;
+        }
+        else if constexpr (std::is_same_v<T, ReluOp>) {
+            return infer_shape(node->inputs()[0]);
+        }
+        else if constexpr (std::is_same_v<T, AddOp>) {
+            return infer_shape(node->inputs()[0]);
+        }
+        else {
+            TT_ERROR("Unknown OpType in shape inference");
+        }
+    }, node->op());
+}
+
+void collect_inputs_recursive(const std::shared_ptr<OpNode>& node,
+                              std::unordered_map<uintptr_t, bool>& visited,
+                              std::vector<InputOp>& inputs) {
+    auto key = reinterpret_cast<uintptr_t>(node.get());
+    if (visited.count(key)) return;
+    visited[key] = true;
+
+    if (std::holds_alternative<InputOp>(node->op())) {
+        inputs.push_back(std::get<InputOp>(node->op()));
+    }
+
+    for (const auto& in : node->inputs()) {
+        collect_inputs_recursive(in, visited, inputs);
+    }
+}
+
+
+std::vector<InputOp> get_sorted_graph_inputs(const std::shared_ptr<OpNode>& root) {
+    std::unordered_map<uintptr_t, bool> visited;
+    std::vector<InputOp> inputs;
+    collect_inputs_recursive(root, visited, inputs);
+
+    std::ranges::sort(inputs, [](const InputOp& a, const InputOp& b) {
+        return a.id < b.id;
+    });
+
+    return inputs;
+}
+
+mlir::Type to_mlir_type(mlir::OpBuilder& builder, const Shape& shape, ScalarType dtype) {
+    const std::vector<int>& dims = shape.to_vec();
+
+    // DEBUG PRINT
+    std::cout << "Debug to_mlir_type: ";
+    for(auto d : dims) std::cout << d << " ";
+    std::cout << std::endl;
+
+    std::vector<int64_t> mlir_shape(dims.begin(), dims.end());
+    mlir::Type element_type = builder.getF32Type();
+    return mlir::RankedTensorType::get(mlir_shape, element_type);
+}
+
+}
+
 
 mlir::Value CompilerVisitor::get_mlir_value(const std::shared_ptr<OpNode>& node) const {
     if (!node_value_map.contains(node)) {
@@ -95,10 +167,18 @@ Tensor JITCompiler::compile(std::shared_ptr<OpNode> final_node) {
     impl->module = mlir::ModuleOp::create(impl->builder ? impl->builder->getUnknownLoc() : mlir::UnknownLoc::get(&impl->context));
     impl->builder = std::make_unique<mlir::OpBuilder>(&impl->context);
 
-    std::vector<int64_t> shape = {2, 2};
-    auto tensorType = mlir::RankedTensorType::get(shape, impl->builder->getF32Type());
+    // Gather Inputs and Infer Output Shape
+    std::vector<InputOp> const graph_inputs = get_sorted_graph_inputs(final_node);
+    Shape const final_output_shape = infer_shape(final_node);
 
-    auto funcType = impl->builder->getFunctionType({tensorType, tensorType}, {tensorType});
+    std::vector<mlir::Type> arg_types;
+    for (const auto& in_op : graph_inputs) {
+        arg_types.push_back(to_mlir_type(*impl->builder, in_op.shape, in_op.dtype));
+    }
+
+    mlir::Type const result_type = to_mlir_type(*impl->builder, final_output_shape, kF32);
+
+    const auto funcType = impl->builder->getFunctionType(arg_types, {result_type});
     auto function = mlir::func::FuncOp::create(impl->builder->getUnknownLoc(), "main_graph", funcType);
     function.addEntryBlock();
     impl->module.push_back(function);
