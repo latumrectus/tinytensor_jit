@@ -10,6 +10,7 @@ public:
 
     [[nodiscard]] auto relu(const Tensor &tensor) const -> Tensor override;
     [[nodiscard]] auto add(const Tensor &lhs, const Tensor &rhs) const -> Tensor override;
+    [[nodiscard]] auto batched_matmul(const Tensor &lhs, const Tensor &rhs) const -> Tensor override;
 
     [[noreturn]] void not_impl(const char* name) const {
         std::string msg = std::string("JIT Backend: Function not implemented: ") + name;
@@ -115,8 +116,6 @@ public:
     STUB_RET(Tensor, maximum, const Tensor &lhs, const Tensor &rhs)
     STUB_RET(Tensor, minimum, const Tensor &lhs, const Tensor &rhs)
     STUB_RET(Tensor, pow, const Tensor &lhs, const Tensor &rhs)
-    STUB_RET(Tensor, batched_matmul, const Tensor &lhs, const Tensor &rhs)
-
     STUB_VOID(add_inplace, Tensor &lhs, const Tensor &rhs)
     STUB_VOID(sub_inplace, Tensor &lhs, const Tensor &rhs)
     STUB_VOID(mul_inplace, Tensor &lhs, const Tensor &rhs)

@@ -66,4 +66,63 @@ auto JITGraphBuilder::full(const Scalar &value, std::size_t N, int device_id) co
     return std::make_unique<StorageJIT>(std::move(node));
 }
 
+auto JITGraphBuilder::batched_matmul(const Tensor &lhs, const Tensor &rhs) const -> Tensor {
+    // TODO: Handle compatibility/legality checks for MatMul.
+    auto& lhs_jit = lhs.get_storage<StorageJIT>();
+    auto rhs_jit = rhs.get_storage<StorageJIT>();
+
+    std::shared_ptr<jit::OpNode> lhs_node = lhs_jit.get_node();
+    std::shared_ptr<jit::OpNode> rhs_node = rhs_jit.get_node();
+
+    Shape lhs_shape = lhs.shape();
+    Shape rhs_shape = rhs.shape();
+
+    bool promoted_lhs = false;
+    bool promoted_rhs = false;
+
+    // Promote LHS or RHS to 3D tensor[Rows, Cols] -> [1, Rows, Cols]
+
+    if (lhs_shape.ndim() == 2) {
+        Shape new_shape = {1, lhs_shape[0], lhs_shape[1]};
+        lhs_node = jit::GetGlobalGraph().create_node(
+            jit::ReshapeOp{new_shape},
+            {lhs_node}
+        );
+        lhs_shape = new_shape;
+        promoted_lhs = true;
+    }
+
+    if (rhs_shape.ndim() == 2) {
+        Shape new_shape = {1, rhs_shape[0], rhs_shape[1]};
+        rhs_node = jit::GetGlobalGraph().create_node(
+            jit::ReshapeOp{new_shape},
+            {rhs_node}
+        );
+        rhs_shape = new_shape;
+        promoted_rhs = true;
+    }
+
+    // TODO: Handle Broadcasting (or not if I stick to tuero's philosophy) if batch dimensions differ ([1, R, C] vs [N, R, C])
+    // TOSA matmul supports broadcasting on batch dim implicitly if shapes match rules (might wanna throw an error instead we shall see)
+
+    // now we have MatMulOp in the form of [Batch, M, K] x [Batch, K, N] (where batch may be 1)
+    auto matmul_node = jit::GetGlobalGraph().create_node(
+        jit::MatMulOp{},
+        {lhs_node, rhs_node}
+    );
+
+    Shape out_shape_3d = {lhs_shape[0], lhs_shape[1], rhs_shape[2]};
+
+    // result back to 2D if both inputs were originally 2D
+    if (promoted_lhs && promoted_rhs) {
+        Shape out_shape_2d = {out_shape_3d[1], out_shape_3d[2]};
+        auto reshape_back_node = jit::GetGlobalGraph().create_node(
+            jit::ReshapeOp{out_shape_2d},
+            {matmul_node}
+        );
+        return make_jit_tensor(reshape_back_node, out_shape_2d, lhs.dtype());
+    }
+
+    return make_jit_tensor(matmul_node, out_shape_3d, lhs.dtype());
+}
 } // namespace tinytensor

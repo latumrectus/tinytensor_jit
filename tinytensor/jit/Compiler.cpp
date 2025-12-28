@@ -53,6 +53,17 @@ Shape infer_shape(const std::shared_ptr<OpNode>& node) {
         else if constexpr (std::is_same_v<T, AddOp>) {
             return infer_shape(node->inputs()[0]);
         }
+        else if constexpr (std::is_same_v<T, MatMulOp>) {
+            Shape lhs = infer_shape(node->inputs()[0]);
+            Shape rhs = infer_shape(node->inputs()[1]);
+
+            // if (lhs.ndim() != 3 || rhs.ndim() != 3) {
+            //     TT_ERROR("SizeError: TOSA MatMul requires Rank-3 inputs");
+            // }
+
+            int B = std::max(lhs[0], rhs[0]);  // Broadcasting for now
+            return {B, lhs[1], rhs[2]};
+        }
         else {
             TT_ERROR("Unknown OpType in shape inference");
         }
@@ -157,7 +168,38 @@ void CompilerVisitor::operator()(const BroadcastOp& op) {
 }
 
 void CompilerVisitor::operator()(const ReshapeOp& op) {
-    std::cout << "  [Compiler] ReshapeOp -> generating IR..." << std::endl;
+    mlir::Location const loc = builder.getUnknownLoc();
+
+    auto input = get_mlir_value(current_node->inputs()[0]);
+
+    std::vector<int64_t> new_shape_i64;
+    const std::vector<int>& dims = op.target_shape.to_vec();
+    for(int d : dims) new_shape_i64.push_back(d);
+
+    auto new_shape_attr = builder.getDenseI64ArrayAttr(new_shape_i64);
+
+    // Construct result type
+    auto element_type = input.getType().cast<mlir::RankedTensorType>().getElementType();
+    auto result_type = mlir::RankedTensorType::get(new_shape_i64, element_type);
+
+    auto reshape = builder.create<mlir::tosa::ReshapeOp>(loc, result_type, input, new_shape_attr);
+    set_mlir_value(ReshapeOp{}, reshape.getResult());
+}
+
+void CompilerVisitor::operator()(const MatMulOp& op) {
+
+    mlir::Location const loc = builder.getUnknownLoc();
+
+    auto lhs = get_mlir_value(current_node->inputs()[0]);
+    auto rhs = get_mlir_value(current_node->inputs()[1]);
+
+    // MatMul output shape can differ from input, so calculate the result type
+    Shape result_shape = infer_shape(current_node);
+    mlir::Type result_type = to_mlir_type(builder, result_shape, kF32);
+
+    auto matmul = builder.create<mlir::tosa::MatMulOp>(loc, result_type, lhs, rhs);
+
+    set_mlir_value(MatMulOp{}, matmul.getResult());
 }
 
 Tensor JITCompiler::compile(std::shared_ptr<OpNode> final_node) {

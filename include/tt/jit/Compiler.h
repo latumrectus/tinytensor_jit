@@ -31,6 +31,7 @@ public:
     void operator()(const AddOp& op);
     void operator()(const BroadcastOp& op);
     void operator()(const ReshapeOp& op);
+    void operator()(const MatMulOp &op);
 
     mlir::Value get_mlir_value(const std::shared_ptr<OpNode>& node) const;
     void set_mlir_value(const OpType& op_variant, mlir::Value val);

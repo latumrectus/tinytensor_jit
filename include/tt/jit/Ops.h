@@ -28,14 +28,15 @@ struct BroadcastOp {
 struct ReshapeOp {
     Shape target_shape;
 };
-
+struct MatMulOp {};
 // The Variant
 using OpType = std::variant<
     InputOp,
     ReluOp,
     AddOp,
     BroadcastOp,
-    ReshapeOp
+    ReshapeOp,
+    MatMulOp
 >;
 
 } // namespace tinytensor::jit
