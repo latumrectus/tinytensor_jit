@@ -5,12 +5,44 @@
 #include <algorithm>
 #include <iostream>
 
+// MLIR Core
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
+
+// MLIR Dialects
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+
+// MLIR Passes & Conversion
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
+#include "mlir/Conversion/Passes.h"
+#include "mlir/Conversion/TosaToLinalg/TosaToLinalg.h"
+#include "mlir/Conversion/TosaToArith/TosaToArith.h"
+#include "mlir/Conversion/TosaToSCF/TosaToSCF.h"
+#include "mlir/Dialect/Bufferization/Transforms/Passes.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
+
+// LLVM Translation
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Export.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Support/raw_os_ostream.h"
 
 namespace tinytensor::jit {
 
@@ -20,9 +52,20 @@ struct JITCompiler::Impl {
     mlir::ModuleOp module;
     std::unique_ptr<mlir::OpBuilder> builder;
 
+    // LLVM Context
+    llvm::LLVMContext llvm_context;
+    std::unique_ptr<llvm::Module> llvm_module;
+
     Impl() {
-        context.getOrLoadDialect<mlir::func::FuncDialect>();
-        context.getOrLoadDialect<mlir::tosa::TosaDialect>();
+        // Load necessary dialects
+        context.loadDialect<mlir::func::FuncDialect>();
+        context.loadDialect<mlir::tosa::TosaDialect>();
+        context.loadDialect<mlir::arith::ArithDialect>();
+        context.loadDialect<mlir::scf::SCFDialect>();
+        context.loadDialect<mlir::cf::ControlFlowDialect>();
+        context.loadDialect<mlir::memref::MemRefDialect>();
+        context.loadDialect<mlir::LLVM::LLVMDialect>();
+        context.loadDialect<mlir::bufferization::BufferizationDialect>();
     }
 };
 
@@ -102,10 +145,10 @@ std::vector<InputOp> get_sorted_graph_inputs(const std::shared_ptr<OpNode>& root
 mlir::Type to_mlir_type(mlir::OpBuilder& builder, const Shape& shape, ScalarType dtype) {
     const std::vector<int>& dims = shape.to_vec();
 
-    // DEBUG PRINT
-    std::cout << "Debug to_mlir_type: ";
-    for(auto d : dims) std::cout << d << " ";
-    std::cout << std::endl;
+    // // DEBUG PRINT
+    // std::cout << "Debug to_mlir_type: ";
+    // for(auto d : dims) std::cout << d << " ";
+    // std::cout << std::endl;
 
     std::vector<int64_t> mlir_shape(dims.begin(), dims.end());
     mlir::Type element_type = builder.getF32Type();
@@ -240,11 +283,54 @@ Tensor JITCompiler::compile(std::shared_ptr<OpNode> final_node) {
         TT_ERROR("MLIR Verification Failed");
     }
 
-    std::cout << "--- GENERATED MLIR (TOSA) ---\n";
-    impl->module.dump();
-    std::cout << "-----------------------------\n";
-
     return full(0.0f, {1}, kCPU);
+}
+
+int JITCompiler::lowerDialects() {
+    mlir::PassManager pm(&impl->context);
+
+    // TOSA -> Linalg/SCF
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::tosa::createTosaToLinalgNamed());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::tosa::createTosaToLinalg());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::tosa::createTosaToArith());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::tosa::createTosaToSCF());
+
+    // Bufferization (Tensor -> MemRef)
+    pm.addPass(mlir::bufferization::createEmptyTensorToAllocTensorPass());
+    pm.addPass(mlir::bufferization::createOneShotBufferizePass());
+
+    // Backend Lowering
+    pm.addPass(mlir::createConvertFuncToLLVMPass());
+    pm.addPass(mlir::createConvertSCFToCFPass());
+    pm.addPass(mlir::createArithToLLVMConversionPass());
+    pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
+    pm.addPass(mlir::createConvertControlFlowToLLVMPass());
+    pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+
+    if (mlir::failed(pm.run(impl->module))) {
+        llvm::errs() << "MLIR Pass pipeline failed\n";
+        impl->module.dump();
+        return 1;
+    }
+    return 0;
+}
+
+void JITCompiler::dumpLLVM(std::ostream &os) {
+
+    // Register translations
+    mlir::registerBuiltinDialectTranslation(impl->context);
+    mlir::registerLLVMDialectTranslation(impl->context);
+
+    // Translate to LLVM IR
+    impl->llvm_module = mlir::translateModuleToLLVMIR(impl->module, impl->llvm_context);
+
+    if (!impl->llvm_module) {
+        llvm::errs() << "Failed to translate module to LLVM IR\n";
+        return;
+    }
+
+    llvm::raw_os_ostream output(os);
+    output << *impl->llvm_module;
 }
 
 void JITCompiler::visit_recursive(const std::shared_ptr<OpNode>& node, CompilerVisitor& visitor) {

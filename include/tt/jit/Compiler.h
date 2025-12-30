@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <unordered_map>
+#include <iostream>
 #include <tt/tensor.h>
 #include <tt/jit/OpNode.h>
 #include <tt/jit/Visitor.h>
@@ -60,6 +61,10 @@ public:
     JITCompiler& operator=(const JITCompiler&) = delete;
 
     Tensor compile(std::shared_ptr<OpNode> final_node);
+
+    int lowerDialects();
+
+    void dumpLLVM(std::ostream &os);
 
 private:
     void visit_recursive(const std::shared_ptr<OpNode>& node, CompilerVisitor& visitor);
