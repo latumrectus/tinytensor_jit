@@ -207,7 +207,55 @@ void CompilerVisitor::operator()(const AddOp& op) {
 }
 
 void CompilerVisitor::operator()(const BroadcastOp& op) {
-    std::cout << "  [Compiler] BroadcastOp -> generating IR..." << std::endl;
+    mlir::Location loc = builder.getUnknownLoc();
+
+    auto input = get_mlir_value(current_node->inputs()[0]); // get the input tensor
+    auto in_type = input.getType().cast<mlir::RankedTensorType>(); // convert to ranked tensor type
+
+    llvm::ArrayRef<int64_t> in_shape = in_type.getShape(); // convert shape to long array as MLIR prefers it
+
+    const std::vector<int>& target_dims_int = op.target_shape.to_vec();
+    std::vector<int64_t> target_shape(target_dims_int.begin(), target_dims_int.end());
+
+    if (in_shape.size() < target_shape.size()) {
+        std::vector<int64_t> expanded_shape;
+
+        // Right-align the dimensions
+        size_t offset = target_shape.size() - in_shape.size();
+        for (size_t i = 0; i < offset; ++i) expanded_shape.push_back(1);
+        for (int64_t dim : in_shape) expanded_shape.push_back(dim);
+
+        // Create Reshape Op
+        auto new_type = mlir::RankedTensorType::get(expanded_shape, in_type.getElementType());
+        auto new_shape_attr = builder.getDenseI64ArrayAttr(expanded_shape);
+        auto reshape = builder.create<mlir::tosa::ReshapeOp>(loc, new_type, input, new_shape_attr);
+
+        // Update input to point to the reshaped result
+        input = reshape.getResult();
+        in_shape = input.getType().cast<mlir::RankedTensorType>().getShape();
+    }
+
+    // Compute Tiling Multiples
+    std::vector<int64_t> multiples;
+    for (size_t i = 0; i < target_shape.size(); ++i) {
+        if (in_shape[i] == target_shape[i]) {
+            multiples.push_back(1);
+        } else if (in_shape[i] == 1) {
+            multiples.push_back(target_shape[i]);
+        } else {
+            TT_ERROR("Broadcast compatibility error: Cannot broadcast dimension " +
+                     std::to_string(in_shape[i]) + " to " + std::to_string(target_shape[i]));
+        }
+    }
+
+    // Create Tile Op
+    auto multiples_attr = builder.getDenseI64ArrayAttr(multiples);
+    auto result_type = mlir::RankedTensorType::get(target_shape, in_type.getElementType());
+
+    auto tile = builder.create<mlir::tosa::TileOp>(loc, result_type, input, multiples_attr);
+
+    set_mlir_value(BroadcastOp{}, tile.getResult());
+
 }
 
 void CompilerVisitor::operator()(const ReshapeOp& op) {

@@ -125,4 +125,16 @@ auto JITGraphBuilder::batched_matmul(const Tensor &lhs, const Tensor &rhs) const
 
     return make_jit_tensor(matmul_node, out_shape_3d, lhs.dtype());
 }
+
+auto JITGraphBuilder::Broadcast(const Tensor &tensor, const Shape &targetShape) const{
+    auto& input_tensor = tensor.get_storage<StorageJIT>();
+    auto node = jit::GetGlobalGraph().create_node(
+        jit::BroadcastOp{.target_shape = targetShape},
+        {input_tensor.get_node()}
+    );
+
+    return make_jit_tensor(node, targetShape, tensor.dtype());
+}
+
+
 } // namespace tinytensor

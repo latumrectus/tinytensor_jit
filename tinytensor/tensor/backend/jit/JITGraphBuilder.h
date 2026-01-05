@@ -11,7 +11,7 @@ public:
     [[nodiscard]] auto relu(const Tensor &tensor) const -> Tensor override;
     [[nodiscard]] auto add(const Tensor &lhs, const Tensor &rhs) const -> Tensor override;
     [[nodiscard]] auto batched_matmul(const Tensor &lhs, const Tensor &rhs) const -> Tensor override;
-
+    [[nodiscard]] auto Broadcast(const Tensor &tensor, const Shape &targetShape) const;
     [[noreturn]] void not_impl(const char* name) const {
         std::string msg = std::string("JIT Backend: Function not implemented: ") + name;
         TT_ERROR(msg.c_str());

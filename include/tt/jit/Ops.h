@@ -25,10 +25,17 @@ struct BroadcastOp {
     Shape target_shape;
 };
 
+struct Conv2dOp {
+    std::vector<int> stride;
+    std::vector<int> padding;
+    std::vector<int> dilation;
+};
+
 struct ReshapeOp {
     Shape target_shape;
 };
 struct MatMulOp {};
+
 // The Variant
 using OpType = std::variant<
     InputOp,
@@ -36,7 +43,8 @@ using OpType = std::variant<
     AddOp,
     BroadcastOp,
     ReshapeOp,
-    MatMulOp
+    MatMulOp,
+    Conv2dOp
 >;
 
 } // namespace tinytensor::jit
